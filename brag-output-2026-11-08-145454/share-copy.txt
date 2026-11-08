@@ -1,0 +1,1 @@
+Clawd hat jetzt eine Tanzfläche. Demo-Beat drücken oder eigene MP3 reinziehen, und der Voxel-Clawd hüpft auf jeden Beat, während hinter ihm eine Würfel-Equalizer-Wand mitgeht. Läuft komplett im Browser: github.com/cvhfmjr499-svg/Clawd-3d
