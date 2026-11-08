@@ -34,7 +34,7 @@ button[aria-pressed="true"] { background: var(--clawd); border-color: var(--claw
 
 <header>
   <h1>Clawd</h1>
-  <span class="hint">Ziehen zum Drehen · Mausrad oder zwei Finger zum Zoomen</span>
+  <span class="hint">Ziehen zum Drehen · Zoomen mit Mausrad oder zwei Fingern · Doppelklick oder Leertaste: Springen</span>
 </header>
 <div id="stage"></div>
 <footer>
@@ -45,6 +45,7 @@ button[aria-pressed="true"] { background: var(--clawd); border-color: var(--claw
   </div>
   <div class="btns">
     <button id="spin" aria-pressed="true">Auto-Drehen</button>
+    <button id="jump">Springen</button>
     <button id="wave">Winken</button>
   </div>
 </footer>
@@ -134,6 +135,11 @@ button[aria-pressed="true"] { background: var(--clawd); border-color: var(--claw
   if (reduce) { spin = false; spinBtn.setAttribute('aria-pressed', 'false'); }
   spinBtn.onclick = () => { spin = !spin; spinBtn.setAttribute('aria-pressed', String(spin)); };
   document.getElementById('wave').onclick = () => { waveT = 0; };
+  let jumpT = -1, nextHop = performance.now() / 1000 + 1.5;
+  const jump = () => { if (jumpT < 0) jumpT = 0; };
+  document.getElementById('jump').onclick = jump;
+  stage.addEventListener('dblclick', jump);
+  addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); jump(); } });
 
   const resize = () => {
     const w = stage.clientWidth, h = stage.clientHeight;
@@ -150,6 +156,19 @@ button[aria-pressed="true"] { background: var(--clawd); border-color: var(--claw
       body.position.y = armL.position.y = Math.sin(t * 2.2) * 0.08;
       armR.position.y = shoulder.y + body.position.y;
       legs.forEach((l, i) => { l.position.y = Math.max(0, Math.sin(t * 4 + i * 1.6)) * 0.06; });
+    }
+    // Hüpfen: alle 3 s von selbst, sonst per Knopf. Ducken → Sprung (Parabel) → Landung mit Stauchen
+    if (!reduce && spin && jumpT < 0 && t > nextHop) jump();
+    if (jumpT >= 0) {
+      jumpT += dt;
+      const T = jumpT; let y = 0, sy = 1;
+      if (T < 0.15) sy = 1 - 0.2 * Math.sin(T / 0.15 * Math.PI / 2);
+      else if (T < 0.75) { const u = (T - 0.15) / 0.6; y = 14 * u * (1 - u); sy = 1 + 0.12 * Math.abs(Math.cos(u * Math.PI)); }
+      else if (T < 0.97) sy = 1 - 0.22 * Math.sin((T - 0.75) / 0.22 * Math.PI);
+      else { jumpT = -1; nextHop = t + 3; }
+      const sx = 1 / Math.sqrt(sy);
+      clawd.position.y = y; clawd.scale.set(sx, sy, sx);
+      if (y > 0) legs.forEach(l => { l.position.y = 0; });
     }
     if (waveT >= 0) {
       waveT += dt;
