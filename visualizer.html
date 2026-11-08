@@ -38,12 +38,12 @@ button.primary { background: var(--clawd); border-color: var(--clawd); color: #f
 
 <header>
   <h1>Clawd tanzt</h1>
-  <span class="hint">Spiel den Demo-Beat oder wähle eigene Musik. Clawd hört mit und tanzt im Takt.</span>
+  <span class="hint">Spiel den Demo-Beat oder wähle eigene Musik (oder zieh sie auf die Tanzfläche).</span>
 </header>
 <div id="stage"><div class="hud"><span>Tempo <b id="bpm">–</b> BPM</span><span>Beats <b id="beats">0</b></span></div></div>
 <footer>
   <button id="demo" class="primary">Demo-Beat abspielen</button>
-  <label class="file" for="file">Eigene Musik wählen<input id="file" type="file" accept="audio/*"></label>
+  <label class="file" for="file">Eigene Musik wählen<input id="file" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.flac"></label>
   <button id="pause" hidden>Pause</button>
   <span id="track">Noch keine Musik – Clawd wartet auf der Tanzfläche.</span>
 </footer>
@@ -112,7 +112,7 @@ button.primary { background: var(--clawd); border-color: var(--clawd); color: #f
   }
 
   // ── Audio: one graph for demo beat and user files ──
-  let ctx, analyser, master, freq, mediaEl, mediaSrc, demoTimer = null, playing = false, mode = null;
+  let ctx, analyser, master, freq, demoTimer = null, playing = false, mode = null;
   const trackEl = document.getElementById('track'), pauseBtn = document.getElementById('pause'), demoBtn = document.getElementById('demo');
   function ensureAudio() {
     if (ctx) return;
@@ -152,9 +152,11 @@ button.primary { background: var(--clawd); border-color: var(--clawd); color: #f
       nextNote += SPB / 4; step++;
     }
   }
+  // Own music is decoded into memory (no <audio> element), which also works inside the artifact sandbox.
+  let fileSrc = null;
   function stopAll() {
     if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
-    if (mediaEl) mediaEl.pause();
+    if (fileSrc) { try { fileSrc.stop(); } catch {} fileSrc.disconnect(); fileSrc = null; }
     playing = false; pauseBtn.hidden = true;
   }
   demoBtn.onclick = async () => {
@@ -164,22 +166,36 @@ button.primary { background: var(--clawd); border-color: var(--clawd); color: #f
     mode = 'demo'; playing = true; pauseBtn.hidden = false; pauseBtn.textContent = 'Pause'; resetTempo();
     trackEl.textContent = `Demo-Beat · ${BPM} BPM · C – Am – F – G`;
   };
-  document.getElementById('file').onchange = async e => {
-    const file = e.target.files[0]; if (!file) return;
-    ensureAudio(); await ctx.resume(); stopAll();
-    if (!mediaEl) { mediaEl = new Audio(); mediaEl.loop = true; mediaSrc = ctx.createMediaElementSource(mediaEl); mediaSrc.connect(master); }
-    if (mediaEl.src) URL.revokeObjectURL(mediaEl.src);
-    mediaEl.src = URL.createObjectURL(file);
-    try { await mediaEl.play(); mode = 'file'; playing = true; pauseBtn.hidden = false; pauseBtn.textContent = 'Pause'; resetTempo(); trackEl.textContent = file.name; }
-    catch { trackEl.textContent = 'Diese Datei kann der Browser nicht abspielen. Probier MP3, M4A, OGG oder WAV.'; }
-  };
+  async function playFile(file) {
+    if (!file) return;
+    ensureAudio(); stopAll();
+    trackEl.textContent = `Lade ${file.name} …`;
+    let buf;
+    try {
+      const bytes = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsArrayBuffer(file); });
+      buf = await new Promise((res, rej) => { const p = ctx.decodeAudioData(bytes, res, rej); if (p && p.catch) p.catch(rej); });
+    } catch {
+      trackEl.textContent = `${file.name} lässt sich nicht abspielen. Probier MP3, M4A, WAV oder OGG.`; return;
+    }
+    await ctx.resume();
+    fileSrc = ctx.createBufferSource(); fileSrc.buffer = buf; fileSrc.loop = true;
+    fileSrc.connect(master); fileSrc.start();
+    mode = 'file'; playing = true; pauseBtn.hidden = false; pauseBtn.textContent = 'Pause'; resetTempo();
+    trackEl.textContent = file.name;
+  }
+  const fileInput = document.getElementById('file');
+  // unlock audio while we still have the tap (iOS needs that before the picker opens)
+  fileInput.closest('label').addEventListener('pointerdown', () => { ensureAudio(); ctx.resume(); });
+  fileInput.onchange = e => { playFile(e.target.files[0]); e.target.value = ''; };
+  stage.addEventListener('dragover', e => e.preventDefault());
+  stage.addEventListener('drop', e => { e.preventDefault(); playFile(e.dataTransfer.files[0]); });
   pauseBtn.onclick = async () => {
     if (playing) {
-      if (mode === 'demo') { clearInterval(demoTimer); demoTimer = null; await ctx.suspend(); } else mediaEl.pause();
-      playing = false; pauseBtn.textContent = 'Weiter';
+      if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+      await ctx.suspend(); playing = false; pauseBtn.textContent = 'Weiter';
     } else {
       await ctx.resume();
-      if (mode === 'demo') { nextNote = ctx.currentTime + 0.05; demoTimer = setInterval(scheduleDemo, 25); } else await mediaEl.play();
+      if (mode === 'demo') { nextNote = ctx.currentTime + 0.05; demoTimer = setInterval(scheduleDemo, 25); }
       playing = true; pauseBtn.textContent = 'Pause';
     }
   };
