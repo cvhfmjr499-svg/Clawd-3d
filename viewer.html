@@ -2,13 +2,16 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono&display=swap">
 <style>
-/* Layout: one stage that fills the screen, a quiet caption strip underneath */
+/* Layout: one stage that fills the screen, a quiet caption strip underneath.
+   Motion: tokens from motion-anything MOTION-SPEC (fast 160ms, deliberate 600ms, ease-out, spring). */
 :root {
   --bg: #f3efed; --fg: #2a211d; --muted: #7a6a63; --line: #ddd2cc;
-  --clawd: #d97757; --stage: #ebe4e0;
+  --clawd: #d97757; --stage: #ebe4e0; --heart: #ff6f91;
   --display: "Silkscreen", ui-monospace, monospace;
   --body: "IBM Plex Sans", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #1b1715; --fg: #f1e8e3; --muted: #a8968e; --line: #3a302b; --stage: #241e1b; color-scheme: dark } }
@@ -20,21 +23,38 @@ header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content:
 h1 { font-family: var(--display); font-weight: 400; font-size: 1.6rem; margin: 0; color: var(--clawd); letter-spacing: .02em }
 .hint { color: var(--muted); font-size: .85rem }
 #stage { flex: 1; min-height: 320px; border-radius: 6px; background: var(--stage); position: relative; overflow: hidden; touch-action: none; cursor: grab }
+#stage.over-clawd { cursor: pointer }
 #stage:active { cursor: grabbing }
 canvas { display: block; width: 100%; height: 100% }
 footer { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; justify-content: space-between }
 .specs { display: flex; flex-wrap: wrap; gap: 4px 18px; font-family: var(--mono); font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums }
 .specs b { color: var(--fg); font-weight: 400 }
-.btns { display: flex; gap: 8px }
-button { font: 600 .85rem var(--body); background: transparent; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; cursor: pointer }
+.btns { display: flex; flex-wrap: wrap; gap: 8px }
+/* recipe: button-press (spring down on press, pop back) */
+button { font: 600 .85rem var(--body); background: transparent; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; cursor: pointer;
+  transition: transform 160ms var(--spring), border-color 160ms var(--ease-out) }
 button:hover { border-color: var(--clawd) }
+button:active { transform: scale(.9) }
 button:focus-visible { outline: 2px solid var(--clawd); outline-offset: 2px }
 button[aria-pressed="true"] { background: var(--clawd); border-color: var(--clawd); color: #fff }
+/* recipe: like-burst, adapted to hearts rising from where Clawd was petted */
+.hearts { position: absolute; width: 0; height: 0; pointer-events: none }
+.hearts span { position: absolute; left: 0; top: 0; font-size: 18px; line-height: 1; margin: -9px; color: var(--heart);
+  animation: heart-fly 600ms var(--ease-out) forwards }
+@keyframes heart-fly {
+  0% { transform: translate(0, 0) scale(.4); opacity: 0 }
+  20% { opacity: 1 }
+  100% { transform: translate(var(--dx), var(--dy)) scale(var(--s)); opacity: 0 }
+}
+@media (prefers-reduced-motion: reduce) {
+  button, button:active { transition: none; transform: none }
+  .hearts { display: none }
+}
 </style>
 
 <header>
   <h1>Clawd</h1>
-  <span class="hint">Ziehen zum Drehen · Zoomen mit Mausrad oder zwei Fingern · Doppelklick oder Leertaste: Springen</span>
+  <span class="hint">Antippen zum Streicheln · Ziehen zum Drehen · Leertaste: Springen</span>
 </header>
 <div id="stage"></div>
 <footer>
@@ -44,7 +64,7 @@ button[aria-pressed="true"] { background: var(--clawd); border-color: var(--claw
     <span>Dateien: <b>models/clawd.obj · .stl</b></span>
   </div>
   <div class="btns">
-    <button id="spin" aria-pressed="true">Auto-Drehen</button>
+    <button id="spin" aria-pressed="false">Auto-Drehen</button>
     <button id="jump">Springen</button>
     <button id="wave">Winken</button>
   </div>
@@ -54,6 +74,7 @@ button[aria-pressed="true"] { background: var(--clawd); border-color: var(--claw
 <script>
 (() => {
   const stage = document.getElementById('stage');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
@@ -63,8 +84,8 @@ button[aria-pressed="true"] { background: var(--clawd); border-color: var(--claw
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 200);
 
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a6a5c, 0.75));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.75);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a6a5c, 0.8));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.7);
   sun.position.set(6, 14, 10);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
@@ -76,32 +97,47 @@ button[aria-pressed="true"] { background: var(--clawd); border-color: var(--claw
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // Same voxel layout as clawd.py (x: links→rechts, y: hoch, z: vorne→hinten)
+  // ── Model: same voxel layout as clawd.py ──────────────────────────────
   const orange = new THREE.MeshStandardMaterial({ color: 0xd97757, roughness: 0.7 });
-  const eye = new THREE.MeshStandardMaterial({ color: 0x15100d, roughness: 0.35 });
   const cube = new THREE.BoxGeometry(1, 1, 1);
   const clawd = new THREE.Group();
   const body = new THREE.Group(), armL = new THREE.Group(), armR = new THREE.Group();
   const legs = [2, 4, 7, 9].map(() => new THREE.Group());
   clawd.add(body, armL, armR, ...legs);
+  const pickables = [];
 
-  const put = (grp, x, y, z, mat) => {
-    const m = new THREE.Mesh(cube, mat);
+  const put = (grp, x, y, z) => {
+    const m = new THREE.Mesh(cube, orange);
     m.position.set(x - 5.5, y + 0.5, -(z - 2.5));
     m.castShadow = m.receiveShadow = true;
-    grp.add(m);
+    grp.add(m); pickables.push(m);
   };
-  const box = (grp, x0, x1, y0, y1, z0, z1, mat, skip) => {
-    for (let x = x0; x < x1; x++) for (let y = y0; y < y1; y++) for (let z = z0; z < z1; z++)
-      if (!skip || !skip(x, y, z)) put(grp, x, y, z, mat);
+  const box = (grp, x0, x1, y0, y1, z0, z1) => {
+    for (let x = x0; x < x1; x++) for (let y = y0; y < y1; y++) for (let z = z0; z < z1; z++) put(grp, x, y, z);
   };
-  const isEye = (x, y, z) => z === 0 && (x === 3 || x === 8) && y >= 4 && y < 6;
-  box(body, 1, 11, 2, 7, 0, 6, orange, isEye);
-  box(body, 3, 4, 4, 6, 0, 1, eye);
-  box(body, 8, 9, 4, 6, 0, 1, eye);
-  box(armL, 0, 1, 3, 5, 2, 4, orange);
-  box(armR, 11, 12, 3, 5, 2, 4, orange);
-  [2, 4, 7, 9].forEach((lx, i) => box(legs[i], lx, lx + 1, 0, 2, 1, 5, orange));
+  box(body, 1, 11, 2, 7, 0, 6);
+  box(armL, 0, 1, 3, 5, 2, 4);
+  box(armR, 11, 12, 3, 5, 2, 4);
+  [2, 4, 7, 9].forEach((lx, i) => box(legs[i], lx, lx + 1, 0, 2, 1, 5));
+
+  // Face: thin plates on the front so the eyes can blink, look around and smile.
+  const FRONT = 3.0;
+  const plate = (w, h, color, opts = {}) => new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08),
+    new THREE.MeshStandardMaterial({ color, roughness: opts.rough ?? 0.4, transparent: !!opts.alpha, opacity: opts.alpha ?? 1 }));
+  const face = new THREE.Group(); body.add(face);
+  const eyes = [-2.5, 2.5].map(x => {
+    const eye = new THREE.Group(); eye.position.set(x, 5, FRONT + 0.04);
+    const pupil = plate(1, 2, 0x15100d, { rough: 0.25 });
+    const shine = plate(0.38, 0.38, 0xffffff, { rough: 0.2 }); shine.position.set(0.2, 0.55, 0.03);
+    const shine2 = plate(0.18, 0.18, 0xffffff, { rough: 0.2 }); shine2.position.set(-0.22, -0.45, 0.03);
+    eye.add(pupil, shine, shine2); face.add(eye);
+    return eye;
+  });
+  const cheekMat = new THREE.MeshStandardMaterial({ color: 0xff8fa3, roughness: 0.9, transparent: true, opacity: 0.55 });
+  [-3.6, 3.6].forEach(x => {
+    const c = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 0.06), cheekMat);
+    c.position.set(x, 3.7, FRONT + 0.03); face.add(c);
+  });
 
   // Pivot the right arm at its shoulder so it can wave
   const shoulder = new THREE.Vector3(5.5, 4, 0);
@@ -109,13 +145,28 @@ button[aria-pressed="true"] { background: var(--clawd); border-color: var(--claw
   armR.position.copy(shoulder);
   scene.add(clawd);
 
-  // Minimal orbit: drag rotates, wheel / pinch zooms
-  let yaw = -0.55, pitch = 0.32, dist = 26, spin = true, waveT = -1;
-  const pointers = new Map(); let pinch0 = 0, dist0 = dist;
-  stage.addEventListener('pointerdown', e => { stage.setPointerCapture(e.pointerId); pointers.set(e.pointerId, e); });
+  // ── Input: drag to orbit, tap Clawd to pet, wheel / pinch to zoom ─────
+  let yaw = -0.35, pitch = 0.28, dist = 26, spin = false, waveT = -1;
+  const pointers = new Map(); let pinch0 = 0, dist0 = dist, downAt = null;
+  const look = new THREE.Vector2(), lookNow = new THREE.Vector2();
+  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  const hitClawd = (cx, cy) => {
+    const r = stage.getBoundingClientRect();
+    ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    return ray.intersectObjects(pickables, false).length > 0;
+  };
+  stage.addEventListener('pointerdown', e => {
+    stage.setPointerCapture(e.pointerId); pointers.set(e.pointerId, e);
+    downAt = { x: e.clientX, y: e.clientY, moved: false };
+  });
   stage.addEventListener('pointermove', e => {
-    const prev = pointers.get(e.pointerId); if (!prev) return;
+    const r = stage.getBoundingClientRect();
+    look.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    const prev = pointers.get(e.pointerId);
+    if (!prev) { stage.classList.toggle('over-clawd', e.pointerType === 'mouse' && hitClawd(e.clientX, e.clientY)); return; }
     pointers.set(e.pointerId, e);
+    if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 6) downAt.moved = true;
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
@@ -126,19 +177,49 @@ button[aria-pressed="true"] { background: var(--clawd); border-color: var(--claw
       pitch = Math.min(1.3, Math.max(-0.1, pitch + (e.clientY - prev.clientY) * 0.006));
     }
   });
-  const up = e => { pointers.delete(e.pointerId); pinch0 = 0; };
-  stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
+  const up = e => {
+    if (downAt && !downAt.moved && pointers.size === 1 && hitClawd(e.clientX, e.clientY)) pet(e.clientX, e.clientY);
+    pointers.delete(e.pointerId); pinch0 = 0; downAt = null;
+  };
+  stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', e => { downAt = null; up(e); });
+  stage.addEventListener('pointerleave', () => look.set(0, 0));
   stage.addEventListener('wheel', e => { e.preventDefault(); dist = Math.min(50, Math.max(12, dist * (1 + e.deltaY * 0.001))); }, { passive: false });
 
+  // ── Petting: happy ^^ eyes, rosy cheeks, a little hop, hearts (one burst at a time) ──
+  let happyT = -1, lastBurst = 0;
+  function hearts(cx, cy) {
+    if (reduce || performance.now() - lastBurst < 650) return;
+    lastBurst = performance.now();
+    const r = stage.getBoundingClientRect();
+    const layer = document.createElement('div');
+    layer.className = 'hearts';
+    layer.style.left = (cx - r.left) + 'px'; layer.style.top = (cy - r.top) + 'px';
+    for (let i = 0; i < 7; i++) {
+      const h = document.createElement('span'); h.textContent = '♥';
+      const a = -Math.PI / 2 + (i - 3) * 0.32 + (Math.random() - 0.5) * 0.2;
+      const d = 46 + Math.random() * 30;
+      h.style.setProperty('--dx', Math.cos(a) * d + 'px');
+      h.style.setProperty('--dy', Math.sin(a) * d + 'px');
+      h.style.setProperty('--s', (0.8 + Math.random() * 0.5).toFixed(2));
+      h.style.animationDelay = Math.random() * 40 + 'ms';
+      layer.appendChild(h);
+    }
+    stage.appendChild(layer);
+    setTimeout(() => layer.remove(), 700);
+  }
+  function pet(cx, cy) {
+    happyT = 0;
+    hearts(cx, cy);
+    if (!reduce) jump(0.45);
+  }
+
+  // ── Buttons & keys ────────────────────────────────────────────────────
   const spinBtn = document.getElementById('spin');
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduce) { spin = false; spinBtn.setAttribute('aria-pressed', 'false'); }
   spinBtn.onclick = () => { spin = !spin; spinBtn.setAttribute('aria-pressed', String(spin)); };
   document.getElementById('wave').onclick = () => { waveT = 0; };
-  let jumpT = -1, nextHop = performance.now() / 1000 + 1.5;
-  const jump = () => { if (jumpT < 0) jumpT = 0; };
-  document.getElementById('jump').onclick = jump;
-  stage.addEventListener('dblclick', jump);
+  let jumpT = -1, jumpH = 1;
+  const jump = (h = 1) => { if (jumpT < 0) { jumpT = 0; jumpH = h; } };
+  document.getElementById('jump').onclick = () => jump();
   addEventListener('keydown', e => { if (e.code === 'Space' && e.target.tagName !== 'BUTTON') { e.preventDefault(); jump(); } });
 
   const resize = () => {
@@ -147,29 +228,43 @@ button[aria-pressed="true"] { background: var(--clawd); border-color: var(--claw
   };
   new ResizeObserver(resize).observe(stage); resize();
 
-  let last = performance.now();
+  // ── Animation loop ────────────────────────────────────────────────────
+  let last = performance.now(), nextBlink = last / 1000 + 2, blinkT = -1;
+  const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
   renderer.setAnimationLoop(now => {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     const t = now / 1000;
     if (spin) yaw += dt * 0.4;
-    if (!reduce) {
-      body.position.y = armL.position.y = Math.sin(t * 2.2) * 0.08;
-      armR.position.y = shoulder.y + body.position.y;
-      legs.forEach((l, i) => { l.position.y = Math.max(0, Math.sin(t * 4 + i * 1.6)) * 0.06; });
-    }
-    // Hüpfen: alle 3 s von selbst, sonst per Knopf. Ducken → Sprung (Parabel) → Landung mit Stauchen
-    if (!reduce && spin && jumpT < 0 && t > nextHop) jump();
+
+    // the one ambient loop: slow breathing (a 1.5% squash)
+    let y = 0, sy = reduce ? 1 : 1 + Math.sin(t * 2.4) * 0.015;
+
     if (jumpT >= 0) {
       jumpT += dt;
-      const T = jumpT; let y = 0, sy = 1;
+      const T = jumpT;
       if (T < 0.15) sy = 1 - 0.2 * Math.sin(T / 0.15 * Math.PI / 2);
-      else if (T < 0.75) { const u = (T - 0.15) / 0.6; y = 14 * u * (1 - u); sy = 1 + 0.12 * Math.abs(Math.cos(u * Math.PI)); }
+      else if (T < 0.75) { const u = (T - 0.15) / 0.6; y = 14 * jumpH * u * (1 - u); sy = 1 + 0.12 * Math.abs(Math.cos(u * Math.PI)); }
       else if (T < 0.97) sy = 1 - 0.22 * Math.sin((T - 0.75) / 0.22 * Math.PI);
-      else { jumpT = -1; nextHop = t + 3; }
-      const sx = 1 / Math.sqrt(sy);
-      clawd.position.y = y; clawd.scale.set(sx, sy, sx);
-      if (y > 0) legs.forEach(l => { l.position.y = 0; });
+      else jumpT = -1;
     }
+    const sx = 1 / Math.sqrt(sy);
+    clawd.position.y = y; clawd.scale.set(sx, sy, sx);
+
+    // eyes follow the pointer (soft spring), blink now and then, turn to ^^ when happy
+    lookNow.x = damp(lookNow.x, look.x, 8, dt); lookNow.y = damp(lookNow.y, look.y, 8, dt);
+    if (t > nextBlink && blinkT < 0 && happyT < 0) { blinkT = 0; nextBlink = t + 2.5 + Math.random() * 3; }
+    let eyeY = 1;
+    if (blinkT >= 0) { blinkT += dt; eyeY = Math.max(0.08, Math.abs(1 - blinkT / 0.07)); if (blinkT > 0.14) blinkT = -1; }
+    let happy = 0;
+    if (happyT >= 0) { happyT += dt; happy = Math.min(1, happyT / 0.12) * Math.min(1, (1.4 - happyT) / 0.2); if (happyT > 1.4) happyT = -1; }
+    eyes.forEach((eye, i) => {
+      eye.position.x = (i ? 2.5 : -2.5) + lookNow.x * 0.18;
+      eye.position.y = 5 + lookNow.y * 0.15 + happy * 0.45;
+      eye.scale.y = Math.min(eyeY, 1 - happy * 0.82);
+      eye.children[1].visible = eye.children[2].visible = happy < 0.5;
+    });
+    cheekMat.opacity = 0.55 + happy * 0.4;
+
     if (waveT >= 0) {
       waveT += dt;
       armR.rotation.z = Math.sin(waveT * 10) * 0.5 * Math.min(1, 2.2 - waveT) + 0.6 * Math.min(1, 2.2 - waveT);
