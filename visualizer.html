@@ -116,6 +116,8 @@ button.primary { background: var(--clawd); border-color: var(--clawd); color: #f
   const trackEl = document.getElementById('track'), pauseBtn = document.getElementById('pause'), demoBtn = document.getElementById('demo');
   function ensureAudio() {
     if (ctx) return;
+    // iPhone: play through the speaker even when the ring/silent switch is on silent
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain(); master.gain.value = 0.8;
     analyser = ctx.createAnalyser(); analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.3;
