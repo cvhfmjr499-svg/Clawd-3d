@@ -1,0 +1,164 @@
+<title>Clawd in 3D</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono&display=swap">
+<style>
+/* Layout: one stage that fills the screen, a quiet caption strip underneath */
+:root {
+  --bg: #f3efed; --fg: #2a211d; --muted: #7a6a63; --line: #ddd2cc;
+  --clawd: #d97757; --stage: #ebe4e0;
+  --display: "Silkscreen", ui-monospace, monospace;
+  --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #1b1715; --fg: #f1e8e3; --muted: #a8968e; --line: #3a302b; --stage: #241e1b; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #1b1715; --fg: #f1e8e3; --muted: #a8968e; --line: #3a302b; --stage: #241e1b; color-scheme: dark }
+html, body { height: 100% }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); display: flex; flex-direction: column;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px; box-sizing: border-box; gap: 12px }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px }
+h1 { font-family: var(--display); font-weight: 400; font-size: 1.6rem; margin: 0; color: var(--clawd); letter-spacing: .02em }
+.hint { color: var(--muted); font-size: .85rem }
+#stage { flex: 1; min-height: 320px; border-radius: 6px; background: var(--stage); position: relative; overflow: hidden; touch-action: none; cursor: grab }
+#stage:active { cursor: grabbing }
+canvas { display: block; width: 100%; height: 100% }
+footer { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; justify-content: space-between }
+.specs { display: flex; flex-wrap: wrap; gap: 4px 18px; font-family: var(--mono); font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums }
+.specs b { color: var(--fg); font-weight: 400 }
+.btns { display: flex; gap: 8px }
+button { font: 600 .85rem var(--body); background: transparent; color: var(--fg); border: 1px solid var(--line); border-radius: 4px; padding: 7px 12px; cursor: pointer }
+button:hover { border-color: var(--clawd) }
+button:focus-visible { outline: 2px solid var(--clawd); outline-offset: 2px }
+button[aria-pressed="true"] { background: var(--clawd); border-color: var(--clawd); color: #fff }
+</style>
+
+<header>
+  <h1>Clawd</h1>
+  <span class="hint">Ziehen zum Drehen · Mausrad oder zwei Finger zum Zoomen</span>
+</header>
+<div id="stage"></div>
+<footer>
+  <div class="specs">
+    <span><b>340</b> Voxel</span>
+    <span><b>60 × 35 × 30</b> mm bei 5 mm/Voxel</span>
+    <span>Dateien: <b>models/clawd.obj · .stl</b></span>
+  </div>
+  <div class="btns">
+    <button id="spin" aria-pressed="true">Auto-Drehen</button>
+    <button id="wave">Winken</button>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  stage.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 200);
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a6a5c, 0.75));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.75);
+  sun.position.set(6, 14, 10);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10 });
+  scene.add(sun);
+
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.ShadowMaterial({ opacity: 0.18 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // Same voxel layout as clawd.py (x: links→rechts, y: hoch, z: vorne→hinten)
+  const orange = new THREE.MeshStandardMaterial({ color: 0xd97757, roughness: 0.7 });
+  const eye = new THREE.MeshStandardMaterial({ color: 0x15100d, roughness: 0.35 });
+  const cube = new THREE.BoxGeometry(1, 1, 1);
+  const clawd = new THREE.Group();
+  const body = new THREE.Group(), armL = new THREE.Group(), armR = new THREE.Group();
+  const legs = [2, 4, 7, 9].map(() => new THREE.Group());
+  clawd.add(body, armL, armR, ...legs);
+
+  const put = (grp, x, y, z, mat) => {
+    const m = new THREE.Mesh(cube, mat);
+    m.position.set(x - 5.5, y + 0.5, -(z - 2.5));
+    m.castShadow = m.receiveShadow = true;
+    grp.add(m);
+  };
+  const box = (grp, x0, x1, y0, y1, z0, z1, mat, skip) => {
+    for (let x = x0; x < x1; x++) for (let y = y0; y < y1; y++) for (let z = z0; z < z1; z++)
+      if (!skip || !skip(x, y, z)) put(grp, x, y, z, mat);
+  };
+  const isEye = (x, y, z) => z === 0 && (x === 3 || x === 8) && y >= 4 && y < 6;
+  box(body, 1, 11, 2, 7, 0, 6, orange, isEye);
+  box(body, 3, 4, 4, 6, 0, 1, eye);
+  box(body, 8, 9, 4, 6, 0, 1, eye);
+  box(armL, 0, 1, 3, 5, 2, 4, orange);
+  box(armR, 11, 12, 3, 5, 2, 4, orange);
+  [2, 4, 7, 9].forEach((lx, i) => box(legs[i], lx, lx + 1, 0, 2, 1, 5, orange));
+
+  // Pivot the right arm at its shoulder so it can wave
+  const shoulder = new THREE.Vector3(5.5, 4, 0);
+  armR.children.forEach(m => m.position.sub(shoulder));
+  armR.position.copy(shoulder);
+  scene.add(clawd);
+
+  // Minimal orbit: drag rotates, wheel / pinch zooms
+  let yaw = -0.55, pitch = 0.32, dist = 26, spin = true, waveT = -1;
+  const pointers = new Map(); let pinch0 = 0, dist0 = dist;
+  stage.addEventListener('pointerdown', e => { stage.setPointerCapture(e.pointerId); pointers.set(e.pointerId, e); });
+  stage.addEventListener('pointermove', e => {
+    const prev = pointers.get(e.pointerId); if (!prev) return;
+    pointers.set(e.pointerId, e);
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      if (!pinch0) { pinch0 = d; dist0 = dist; }
+      dist = Math.min(50, Math.max(12, dist0 * pinch0 / d));
+    } else {
+      yaw -= (e.clientX - prev.clientX) * 0.008;
+      pitch = Math.min(1.3, Math.max(-0.1, pitch + (e.clientY - prev.clientY) * 0.006));
+    }
+  });
+  const up = e => { pointers.delete(e.pointerId); pinch0 = 0; };
+  stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
+  stage.addEventListener('wheel', e => { e.preventDefault(); dist = Math.min(50, Math.max(12, dist * (1 + e.deltaY * 0.001))); }, { passive: false });
+
+  const spinBtn = document.getElementById('spin');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) { spin = false; spinBtn.setAttribute('aria-pressed', 'false'); }
+  spinBtn.onclick = () => { spin = !spin; spinBtn.setAttribute('aria-pressed', String(spin)); };
+  document.getElementById('wave').onclick = () => { waveT = 0; };
+
+  const resize = () => {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  };
+  new ResizeObserver(resize).observe(stage); resize();
+
+  let last = performance.now();
+  renderer.setAnimationLoop(now => {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const t = now / 1000;
+    if (spin) yaw += dt * 0.4;
+    if (!reduce) {
+      body.position.y = armL.position.y = Math.sin(t * 2.2) * 0.08;
+      armR.position.y = shoulder.y + body.position.y;
+      legs.forEach((l, i) => { l.position.y = Math.max(0, Math.sin(t * 4 + i * 1.6)) * 0.06; });
+    }
+    if (waveT >= 0) {
+      waveT += dt;
+      armR.rotation.z = Math.sin(waveT * 10) * 0.5 * Math.min(1, 2.2 - waveT) + 0.6 * Math.min(1, 2.2 - waveT);
+      if (waveT > 2.2) { waveT = -1; armR.rotation.z = 0; }
+    }
+    camera.position.set(Math.sin(yaw) * Math.cos(pitch) * dist, 3.5 + Math.sin(pitch) * dist, Math.cos(yaw) * Math.cos(pitch) * dist);
+    camera.lookAt(0, 3.5, 0);
+    renderer.render(scene, camera);
+  });
+})();
+</script>
