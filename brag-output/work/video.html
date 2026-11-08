@@ -1,0 +1,188 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root { --bg:#f3efed; --stage:#ebe4e0; --fg:#2a211d; --muted:#7a6a63; --clawd:#d97757; --heart:#ff6f91 }
+html,body { margin:0; width:1920px; height:1080px; overflow:hidden; background:var(--bg) }
+#c { position:absolute; inset:0 }
+.t { position:absolute; color:var(--fg); font-family:"IBM Plex Sans",sans-serif; will-change:transform,opacity; opacity:0 }
+.disp { font-family:"Silkscreen",monospace; color:var(--clawd); letter-spacing:.02em; line-height:1 }
+.big { font-size:150px }
+.mid { font-size:76px; font-weight:600; line-height:1.08; letter-spacing:-.01em }
+.small { font-size:40px; color:var(--muted); line-height:1.35 }
+.mono { font-family:"IBM Plex Mono",monospace; font-size:40px; color:var(--muted) }
+.left { left:150px; width:760px }
+#t1 { left:0; right:0; top:150px; text-align:center }
+#t6 { left:0; right:0; top:700px; text-align:center }
+.w { display:inline-block; will-change:transform,opacity }
+#cursor { position:absolute; left:0; top:0; width:64px; height:64px; transform-origin:8px 6px; opacity:0 }
+.heart { position:absolute; left:0; top:0; font-size:80px; line-height:1; color:var(--heart); opacity:0; margin:-40px; text-shadow:0 2px 0 #fff }
+</style></head><body>
+<canvas id="c" width="1920" height="1080"></canvas>
+
+<div id="t1" class="t"><div class="mid" style="font-size:96px">340 Würfel.</div></div>
+<div id="t2" class="t left" style="top:330px">
+  <div class="disp big">CLAWD</div>
+  <div class="small" style="margin-top:34px;color:var(--fg);font-size:48px">Das Claude-Code-Maskottchen,<br>jetzt in 3D.</div>
+</div>
+<div id="t3" class="t left" style="top:380px"><div class="mid">Antippen zum<br>Streicheln.</div><div class="small" style="margin-top:26px">Er freut sich. Sehr.</div></div>
+<div id="t4" class="t left" style="top:340px"><div class="mid"><span class="w">Springt.</span><br><span class="w">Winkt.</span><br><span class="w">Blinzelt.</span></div></div>
+<div id="t5" class="t left" style="top:390px"><div class="mid">Druckfertig<br>als STL.</div><div class="mono" style="margin-top:30px">60 × 35 × 30 mm<br>OBJ mit Farben</div></div>
+<div id="t6" class="t"><div class="disp" style="font-size:110px">Clawd in 3D</div><div class="mono" style="margin-top:28px">github.com/cvhfmjr499-svg/Clawd-3d</div></div>
+
+<svg id="cursor" viewBox="0 0 32 32"><path d="M4 3 L4 25 L10 19.5 L14 28 L18 26.2 L14 18 L22 18 Z" fill="#2a211d" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg>
+<div id="hearts"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const W = 1920, H = 1080;
+const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('c'), antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H, false);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, W / H, 0.1, 200);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a6a5c, 0.8));
+const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+sun.position.set(6, 14, 10); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12 });
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ opacity: 0.16 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const grid = new THREE.GridHelper(24, 24, 0xd97757, 0xc9b8af);
+grid.material.transparent = true; grid.material.opacity = 0; grid.position.y = 0.01; scene.add(grid);
+
+// ── Clawd, same voxel layout and face as viewer.html ──
+const orange = new THREE.MeshStandardMaterial({ color: 0xd97757, roughness: 0.7 });
+const cube = new THREE.BoxGeometry(1, 1, 1);
+const clawd = new THREE.Group(), body = new THREE.Group(), armL = new THREE.Group(), armR = new THREE.Group();
+clawd.add(body, armL, armR);
+const vox = [];
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const put = (grp, x, y, z) => {
+  const m = new THREE.Mesh(cube, orange);
+  m.position.set(x - 5.5, y + 0.5, -(z - 2.5)); m.castShadow = m.receiveShadow = true;
+  grp.add(m); vox.push({ m, home: m.position.clone(), at: 0.2 + y * 0.32 + rnd() * 0.22 });
+};
+const box = (grp, x0, x1, y0, y1, z0, z1) => { for (let x = x0; x < x1; x++) for (let y = y0; y < y1; y++) for (let z = z0; z < z1; z++) put(grp, x, y, z); };
+box(body, 1, 11, 2, 7, 0, 6); box(armL, 0, 1, 3, 5, 2, 4); box(armR, 11, 12, 3, 5, 2, 4);
+[2, 4, 7, 9].forEach(lx => box(clawd, lx, lx + 1, 0, 2, 1, 5));
+const FRONT = 3.0;
+const plate = (w, h, color, rough = 0.4) => new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), new THREE.MeshStandardMaterial({ color, roughness: rough }));
+const face = new THREE.Group(); body.add(face);
+const eyes = [-2.5, 2.5].map(x => {
+  const eye = new THREE.Group(); eye.position.set(x, 5, FRONT + 0.04);
+  const s1 = plate(0.38, 0.38, 0xffffff, 0.2); s1.position.set(0.2, 0.55, 0.03);
+  const s2 = plate(0.18, 0.18, 0xffffff, 0.2); s2.position.set(-0.22, -0.45, 0.03);
+  eye.add(plate(1, 2, 0x15100d, 0.25), s1, s2); face.add(eye); return eye;
+});
+const cheekMat = new THREE.MeshStandardMaterial({ color: 0xff8fa3, roughness: 0.9, transparent: true, opacity: 0.55 });
+[-3.6, 3.6].forEach(x => { const c = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.55, 0.06), cheekMat); c.position.set(x, 3.7, FRONT + 0.03); face.add(c); });
+const shoulder = new THREE.Vector3(5.5, 4, 0);
+armR.children.forEach(m => m.position.sub(shoulder)); armR.position.copy(shoulder);
+vox.filter(v => v.m.parent === armR).forEach(v => v.home.copy(v.m.position));
+scene.add(clawd);
+
+// ── helpers: every frame is a pure function of t ──
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const sm = x => { x = clamp(x); return x * x * (3 - 2 * x); };
+const eo = x => 1 - Math.pow(1 - clamp(x), 3);
+const eback = x => { x = clamp(x); const c = 1.9; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const ramp = (t, a, b) => sm((t - a) / (b - a));
+function keys(t, ks) { // [[time, value]], smoothstep between
+  if (t <= ks[0][0]) return ks[0][1];
+  for (let i = 1; i < ks.length; i++) if (t <= ks[i][0]) { const [t0, v0] = ks[i - 1], [t1, v1] = ks[i]; return v0 + (v1 - v0) * sm((t - t0) / (t1 - t0)); }
+  return ks[ks.length - 1][1];
+}
+function jumpAt(t, t0, h) {
+  const T = t - t0; let y = 0, sy = 1;
+  if (T < 0 || T > 0.97) return null;
+  if (T < 0.15) sy = 1 - 0.2 * Math.sin(T / 0.15 * Math.PI / 2);
+  else if (T < 0.75) { const u = (T - 0.15) / 0.6; y = 14 * h * u * (1 - u); sy = 1 + 0.12 * Math.abs(Math.cos(u * Math.PI)); }
+  else sy = 1 - 0.22 * Math.sin((T - 0.75) / 0.22 * Math.PI);
+  return { y, sy };
+}
+function waveAt(t, t0) { const w = t - t0; if (w < 0 || w > 2.2) return 0; const k = Math.min(1, 2.2 - w, w / 0.15); return (Math.sin(w * 10) * 0.5 + 0.6) * k; }
+const BLINKS = [4.0, 9.75, 13.25, 16.0, 19.25];
+function vis(el, t, a, b, dy = 36) {
+  const k = eo((t - a) / 0.4) * (1 - sm((t - (b - 0.3)) / 0.3));
+  const y = (1 - eo((t - a) / 0.45)) * dy - sm((t - (b - 0.3)) / 0.3) * 16;
+  el.style.opacity = k.toFixed(3); el.style.transform = `translateY(${y.toFixed(1)}px)`;
+}
+const project = v => { const p = v.clone().project(camera); return { x: (p.x * 0.5 + 0.5) * W, y: (-p.y * 0.5 + 0.5) * H }; };
+
+// hearts
+const HEART_T = 7.0, hearts = [];
+for (let i = 0; i < 9; i++) {
+  const el = document.createElement('div'); el.className = 'heart'; el.textContent = '♥';
+  document.getElementById('hearts').appendChild(el);
+  const a = -Math.PI / 2 + (i - 4) * 0.26 + (rnd() - 0.5) * 0.15;
+  hearts.push({ el, dx: Math.cos(a) * (170 + rnd() * 110), dy: Math.sin(a) * (190 + rnd() * 120), s: 0.8 + rnd() * 0.6, d: rnd() * 0.08 });
+}
+const cursor = document.getElementById('cursor');
+const T = id => document.getElementById(id);
+
+window.renderAt = function (t) {
+  // assembly (hook)
+  for (const v of vox) {
+    const p = clamp((t - v.at) / 0.42);
+    v.m.visible = t >= v.at;
+    v.m.position.set(v.home.x, v.home.y + (1 - eo(p)) * 7, v.home.z);
+    v.m.scale.setScalar(0.5 + 0.5 * eback(p));
+  }
+  const facePop = eback((t - 2.55) / 0.35);
+  face.visible = t >= 2.55; face.scale.setScalar(Math.max(0.001, facePop));
+
+  // body: breathing, hop on pet, jump
+  let y = 0, sy = 1 + Math.sin(t * 2.4 * Math.PI / 2.4 * 2) * 0.015 * ramp(t, 2.8, 3.2);
+  const j = jumpAt(t, 7.0, 0.45) || jumpAt(t, 10.5, 1);
+  if (j) { y = j.y; sy = j.sy; }
+  const sx = 1 / Math.sqrt(sy); clawd.position.y = y; clawd.scale.set(sx, sy, sx);
+  armR.rotation.z = waveAt(t, 12.0) + waveAt(t, 17.9);
+
+  // eyes: look, blink, happy
+  const lx = keys(t, [[4.3, 0], [4.7, -1], [5.7, -1], [6.1, 0.7], [6.9, 0.25], [7.2, 0], [13.5, 0], [13.8, -1], [14.2, 0]]);
+  const ly = keys(t, [[6.1, 0], [6.5, -0.6], [6.9, -0.2], [7.2, 0]]);
+  let eyeY = 1; for (const b of BLINKS) { const d = t - b; if (d >= 0 && d < 0.14) eyeY = Math.max(0.08, Math.abs(1 - d / 0.07)); }
+  const happy = clamp((t - 7.0) / 0.12) * clamp((8.5 - t) / 0.25);
+  eyes.forEach((e, i) => {
+    e.position.x = (i ? 2.5 : -2.5) + lx * 0.18; e.position.y = 5 + ly * 0.15 + happy * 0.45;
+    e.scale.y = Math.min(eyeY, 1 - happy * 0.82); e.children[1].visible = e.children[2].visible = happy < 0.5;
+  });
+  cheekMat.opacity = 0.55 + happy * 0.4;
+
+  // camera
+  const yaw = keys(t, [[0, -0.75], [3, -0.38], [6, -0.3], [10, -0.42], [14, -0.3], [17.5, -0.3 - Math.PI * 2], [18.4, -Math.PI * 2]]);
+  const pitch = keys(t, [[0, 0.5], [3, 0.28], [14, 0.28], [15, 0.55], [17.2, 0.55], [18.2, 0.22]]);
+  const dist = keys(t, [[0, 34], [2.6, 32], [3.6, 25], [14, 25], [14.8, 31], [17.3, 31], [18.4, 23.5]]);
+  camera.position.set(Math.sin(yaw) * Math.cos(pitch) * dist, 3.5 + Math.sin(pitch) * dist, Math.cos(yaw) * Math.cos(pitch) * dist);
+  camera.lookAt(0, 3.5, 0);
+  const offX = keys(t, [[3.0, 0], [3.6, -420], [17.5, -420], [18.2, 0]]);
+  const offY = keys(t, [[0, -110], [3.0, -110], [3.6, 0], [17.5, 0], [18.2, 170]]);
+  camera.setViewOffset(W, H, offX, offY, W, H); camera.updateMatrixWorld();
+  grid.material.opacity = 0.75 * ramp(t, 14.1, 14.6) * (1 - ramp(t, 17.2, 17.6));
+
+  // cursor + hearts
+  const target = project(new THREE.Vector3(0.6, 4.2 + y, 3).applyMatrix4(new THREE.Matrix4().makeRotationY(0)));
+  const ca = eo((t - 6.15) / 0.75), cOut = sm((t - 8.7) / 0.5);
+  const cx = target.x + (1 - ca) * 520 + cOut * 420, cy = target.y + (1 - ca) * 380 + cOut * 260;
+  const press = 1 - 0.18 * Math.sin(clamp((t - 6.93) / 0.16) * Math.PI);
+  cursor.style.opacity = (ramp(t, 6.15, 6.35) * (1 - ramp(t, 8.9, 9.2))).toFixed(3);
+  cursor.style.transform = `translate(${cx - 8}px, ${cy - 6}px) scale(${press})`;
+  const tap = project(new THREE.Vector3(0.6, 4.2, 3));
+  for (const h of hearts) {
+    const p = clamp((t - HEART_T - h.d) / 0.95);
+    const op = p <= 0 || p >= 1 ? 0 : Math.min(1, p / 0.15) * (1 - sm((p - 0.6) / 0.4));
+    h.el.style.opacity = op.toFixed(3);
+    h.el.style.transform = `translate(${tap.x + h.dx * eo(p)}px, ${tap.y + h.dy * eo(p)}px) scale(${(0.4 + (h.s - 0.4) * eo(p / 0.5)).toFixed(3)})`;
+  }
+
+  // copy
+  vis(T('t1'), t, 0.5, 3.0); vis(T('t2'), t, 3.5, 6.0); vis(T('t3'), t, 6.25, 10.0);
+  vis(T('t4'), t, 10.2, 14.0, 0);
+  T('t4').querySelectorAll('.w').forEach((w, i) => { const a = [10.25, 12.0, 13.2][i]; const k = eo((t - a) / 0.35); w.style.opacity = k.toFixed(3); w.style.transform = `translateY(${((1 - k) * 30).toFixed(1)}px)`; });
+  vis(T('t5'), t, 14.25, 17.5); vis(T('t6'), t, 18.0, 21);
+  renderer.render(scene, camera);
+};
+window.ready = (async () => { await document.fonts.ready; await Promise.all(['150px Silkscreen', '76px "IBM Plex Sans"', '40px "IBM Plex Mono"'].map(f => document.fonts.load(f))); return true; })();
+renderAt(0);
+</script></body></html>
