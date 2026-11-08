@@ -6,7 +6,7 @@ const [,, mode, out, ...rest] = process.argv;
   p.on('pageerror', e => console.log('err:', e.message));
   await p.goto('file://' + __dirname + '/video.html');
   await p.evaluate(() => window.ready);
-  const times = mode === 'stills' ? rest.map(Number) : Array.from({ length: 600 }, (_, i) => i / 30);
+  const times = mode === 'stills' ? rest.map(Number) : Array.from({ length: +(process.env.N || 600) }, (_, i) => i / 30);
   const fs = require('fs'); fs.mkdirSync(out, { recursive: true });
   const t0 = Date.now();
   for (let i = 0; i < times.length; i++) {
